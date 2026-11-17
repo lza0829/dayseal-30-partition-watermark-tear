@@ -5,6 +5,7 @@ import { api } from '../api'
 
 const day = ref('')
 const currentDay = ref('')
+const receipt = ref(null)
 const msg = ref('')
 const err = ref('')
 const blocked = ref([])
@@ -17,11 +18,13 @@ onMounted(async () => {
 })
 
 async function save() {
-  msg.value = ''; err.value = ''; blocked.value = []
+  msg.value = ''; err.value = ''; blocked.value = []; receipt.value = null
   try {
     const r = await api.setDay(day.value)
     msg.value = `拨钟成功：${currentDay.value} → ${r.business_day}`
     currentDay.value = r.business_day
+    // 回执即同源快照：钟面=可写上界=可封目标，钉扎水位不被拨钟伪造。
+    receipt.value = r
   } catch (e) {
     err.value = e.message
     // 有未封则拒拨：钟面不变，回执列出未封日，须先封账后才能再拨。
@@ -46,6 +49,17 @@ function goSeal(d) {
   </div>
   <p class="msg">互斥规则：向前拨钟时，若存在更早的未封账营业日，拨钟将被拒绝且钟面不变；须先在封账台收口。</p>
   <p v-if="msg" class="msg">{{ msg }}</p>
+  <div class="panel" v-if="receipt">
+    <h2>拨钟回执 · 四数同源</h2>
+    <table>
+      <tbody>
+        <tr><th>钟面</th><td>{{ receipt.clock }}</td></tr>
+        <tr><th>钉扎水位（最近 sealed）</th><td>{{ receipt.sealed_watermark || '尚无 sealed 分区' }}</td></tr>
+        <tr><th>流水可写上界</th><td>{{ receipt.writable_upper_bound }}</td></tr>
+        <tr><th>封账可封目标</th><td>{{ receipt.seal_target }}</td></tr>
+      </tbody>
+    </table>
+  </div>
   <p v-if="err" class="msg err">{{ err }}</p>
 
   <div class="panel" v-if="blocked.length">

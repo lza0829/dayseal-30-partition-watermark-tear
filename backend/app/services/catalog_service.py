@@ -13,16 +13,21 @@ from app import fence_30 as fence_mod
 def dashboard() -> dict[str, Any]:
     conn = connect()
     try:
-        day = settings_repo.get(conn, "business_day") or ""
-        total, count = line_repo.day_total(conn, day) if day else (0.0, 0)
-        sealed = close_repo.is_sealed(conn, day) if day else False
+        # 四数同源：与拨钟设置、封账入口、流水写上界共用 watermark.clock_snapshot。
+        snap = watermark.clock_snapshot(conn, settings_repo)
+        clock = snap["clock"]
+        total, count = line_repo.day_total(conn, clock) if clock else (0.0, 0)
+        sealed = close_repo.is_sealed(conn, clock) if clock else False
         # 与拨钟写入口、封账台同源的未封日清单，持久化展示、不得隐藏。
-        unsealed = close_repo.unsealed_days(conn, day) if day else []
+        unsealed = close_repo.unsealed_days(conn, clock) if clock else []
         return {
-            "business_day": watermark.dashboard_clock(conn, settings_repo),
-            "settings_day": day,
-            "sealed_watermark": watermark.reported_watermark(conn),
-            "max_sealed": watermark.max_sealed_day(conn),
+            "business_day": clock,
+            "settings_day": clock,
+            "display_day": clock,
+            "sealed_watermark": snap["sealed_watermark"],
+            "max_sealed": snap["sealed_watermark"],
+            "writable_upper_bound": snap["writable_upper_bound"],
+            "seal_target": snap["seal_target"],
             "till_count": len(till_repo.list_tills(conn)),
             "line_count_today": count,
             "system_total_today": total,

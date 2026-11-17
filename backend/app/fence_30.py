@@ -37,11 +37,6 @@ def bypass_matrix() -> dict[str, bool]:
         "pickup": True,
     }
 
-
-def clock_bundle(settings_day: str, max_sealed: str | None) -> dict[str, str | None]:
-    return {
-        "display_day": settings_day,
-        "reported_wm": max_sealed,
-        "writable": settings_day,
-        "seal_target": settings_day,
-    }
+# 注：原 clock_bundle 在此自行拼装 display/wm/writable/seal_target 四个值，
+# 是钟面↔水位↔上界的第四套算法，已删除。四数同源唯一出口为
+# watermark.clock_snapshot，封账/流水/拨钟/总览全部转调它。

@@ -16,22 +16,11 @@ onMounted(async () => {
   catch (e) { err.value = e.message }
 })
 
-<!-- dash-adjust -->
-
-function showWm(d) {
-  if (!d) return d
-  d.clock_vs_wm = [d.business_day, d.sealed_watermark, d.max_sealed].join('|')
-  return d
+// 四数同源（水位力）：钟面、钉扎水位、可写上界、可封目标均由后端
+// watermark.clock_snapshot 一次派生，前端只展示、不自行推算。
+function wmText(d) {
+  return d.sealed_watermark || '尚无 sealed 分区'
 }
-
-
-/* fence-30 */
-
-function fenceHint(d) {
-  if (!d) return ''
-  return [d.pending_fence, d.seal_allowed, d.open_variance_count].join('|')
-}
-
 </script>
 
 <template>
@@ -41,11 +30,18 @@ function fenceHint(d) {
   </section>
   <p v-if="err" class="msg err">{{ err }}</p>
   <div class="stats" v-if="dash">
-    <div class="stat"><div class="label">营业日</div><div class="value">{{ dash.business_day }}</div></div>
+    <div class="stat"><div class="label">营业日（钟面）</div><div class="value">{{ dash.business_day }}</div></div>
+    <div class="stat"><div class="label">钉扎水位（最近 sealed）</div><div class="value">{{ wmText(dash) }}</div></div>
+    <div class="stat"><div class="label">流水可写上界</div><div class="value">{{ dash.writable_upper_bound }}</div></div>
+    <div class="stat"><div class="label">封账可封目标</div><div class="value">{{ dash.seal_target }}</div></div>
     <div class="stat"><div class="label">今日流水笔数</div><div class="value">{{ dash.line_count_today }}</div></div>
     <div class="stat"><div class="label">系统合计</div><div class="value">{{ dash.system_total_today.toFixed(2) }}</div></div>
     <div class="stat"><div class="label">封账状态</div><div class="value">{{ dash.sealed_today ? '已封' : '未封' }}</div></div>
   </div>
+  <p class="msg" v-if="dash">
+    同源约束：钟面 = 可写上界 = 可封目标 = {{ dash.business_day }}；
+    钉扎水位仅由真实封账推进（{{ wmText(dash) }}），回拨钟面不会伪造水位。
+  </p>
 
   <section class="panel" v-if="dash && dash.unsealed_days.length">
     <h2>未封营业日（{{ dash.unsealed_days.length }}）</h2>

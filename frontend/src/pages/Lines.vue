@@ -6,6 +6,7 @@ const rows = ref([])
 const tills = ref([])
 const day = ref('')
 const clockDay = ref('')
+const upperBound = ref('')
 const form = ref({ till_code: 'TILL-A', amount: 10, pay_method: '现金', note: '' })
 const msg = ref('')
 const err = ref('')
@@ -14,6 +15,8 @@ async function load() {
   err.value = ''
   const d = await api.getDay()
   clockDay.value = d.business_day
+  // 可写上界与封账可封目标同源（后端 clock_snapshot），写入超出即被 409 拒绝。
+  upperBound.value = d.writable_upper_bound
   if (!day.value) day.value = clockDay.value
   tills.value = await api.tills()
   rows.value = await api.lines(day.value)
@@ -33,6 +36,10 @@ onMounted(load)
 
 <template>
   <h2>收银流水</h2>
+  <p class="msg">
+    可写上界（= 当前钟面 = 封账可封目标）：{{ upperBound }}。
+    晚于上界的营业日禁止写入，已 sealed 日禁止改写；更早的未封日可补流水。
+  </p>
   <div class="row">
     <label>营业日（未封日可补流水，已封日禁写）
       <input v-model="day" placeholder="YYYY-MM-DD" />

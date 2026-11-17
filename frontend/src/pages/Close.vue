@@ -11,8 +11,14 @@ const selectedDay = ref('')
 const declared = ref(0)
 const batches = ref([])
 const unsealed = ref([])
+const clock = ref(null)
 const msg = ref('')
 const err = ref('')
+
+async function loadClock() {
+  // 封账台与流水写上界读同一 clock_snapshot：可封目标 = 钟面 = 可写上界。
+  clock.value = await api.getDay()
+}
 
 async function loadPreview(day) {
   preview.value = await api.closePreview(day || undefined)
@@ -29,6 +35,7 @@ async function loadUnsealed() {
 async function load(day) {
   err.value = ''
   const target = day || (typeof route.query.day === 'string' ? route.query.day : '')
+  await loadClock()
   await loadPreview(target)
   batches.value = await api.batches()
   await loadUnsealed()
@@ -74,6 +81,11 @@ function precheckView(p) {
 
 <template>
   <h2>日结封账</h2>
+  <p class="msg" v-if="clock">
+    同源钟面：可封目标 = 可写上界 = {{ clock.seal_target }}
+    ｜钉扎水位（最近 sealed）：{{ clock.sealed_watermark || '尚无 sealed 分区' }}
+    ｜晚于钟面的日子不可封，已 sealed 日不可重复封。
+  </p>
   <div v-if="preview" class="panel">
     <p>营业日 {{ preview.business_day }} · 笔数 {{ preview.line_count }} · 系统合计 {{ preview.system_total.toFixed(2) }}
       <span class="tag" :class="preview.sealed ? 'ok' : 'warn'">{{ preview.sealed ? '已封' : '未封' }}</span>

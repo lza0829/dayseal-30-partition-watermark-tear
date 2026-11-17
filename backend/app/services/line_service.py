@@ -23,14 +23,31 @@ def list_lines(business_day: str | None = None) -> list[dict[str, Any]]:
         conn.close()
 
 
+def _guard_writable(conn, day: str) -> None:
+    """流水写入统一守卫：上界与封账可封目标同源（watermark.clock_snapshot）。
+
+    两道关都读同一水位体系，顺序固定：
+    1. 目标日已 sealed（close_batches 实存 sealed 批，即钉扎水位源）→ 禁写；
+    2. 目标日晚于可写上界（= 当前钟面）→ 禁写，钟面未到的分区不接受流水。
+    早于钟面的未封日不在上界之外，仍允许补流水（与既有未封日收口流程一致）。
+    """
+    if close_repo.is_sealed(conn, day):
+        raise HTTPException(409, f"营业日 {day} 已封账，禁止改写流水")
+    bound = watermark.writable_upper_bound(conn, settings_repo)
+    if day > bound:
+        raise HTTPException(
+            409,
+            f"营业日 {day} 超出可写上界 {bound}（当前钟面），禁止写入流水",
+        )
+
+
 def create_line(body: dict[str, Any]) -> dict[str, Any]:
     conn = connect(immediate=True)
     try:
         day = body.get("business_day") or settings_repo.get(conn, "business_day")
         if not day:
             raise HTTPException(400, "未设置营业日")
-        if close_repo.is_sealed(conn, day):
-            raise HTTPException(409, f"营业日 {day} 已封账，禁止新增流水")
+        _guard_writable(conn, day)
         created = _now()
         lid = line_repo.insert_line(
             conn,
@@ -58,8 +75,7 @@ def patch_line(line_id: int, body: dict[str, Any]) -> dict[str, Any]:
         row = line_repo.get_line(conn, line_id)
         if not row:
             raise HTTPException(404, "流水不存在")
-        if close_repo.is_sealed(conn, row["business_day"]):
-            raise HTTPException(409, f"营业日 {row['business_day']} 已封账，禁止修改流水")
+        _guard_writable(conn, row["business_day"])
         line_repo.update_line(
             conn,
             line_id,
@@ -82,8 +98,7 @@ def remove_line(line_id: int) -> dict[str, Any]:
         row = line_repo.get_line(conn, line_id)
         if not row:
             raise HTTPException(404, "流水不存在")
-        if close_repo.is_sealed(conn, row["business_day"]):
-            raise HTTPException(409, f"营业日 {row['business_day']} 已封账，禁止删除流水")
+        _guard_writable(conn, row["business_day"])
         line_repo.delete_line(conn, line_id)
         conn.commit()
         return {"deleted": True, "id": line_id}
@@ -92,20 +107,6 @@ def remove_line(line_id: int) -> dict[str, Any]:
         raise
     finally:
         conn.close()
-
-def _writable_day(conn, settings_repo, close_repo) -> str:
-    from app import watermark
-    return watermark.writable_upper_bound(conn, settings_repo, close_repo)
-
-
-def _watermark_gap(conn, settings_repo) -> dict:
-    from app import watermark
-    return {
-        "display": watermark.dashboard_clock(conn, settings_repo),
-        "reported_wm": watermark.reported_watermark(conn),
-        "max_sealed": watermark.max_sealed_day(conn),
-        "writable": watermark.writable_upper_bound(conn, settings_repo, None),
-    }
 
 def list_lines_export(business_day: str | None = None) -> list[dict]:
     rows = list_lines(business_day)

@@ -56,15 +56,20 @@ def list_unsealed(before_day: str | None = None) -> dict[str, Any]:
 
 
 def seal(body: dict[str, Any]) -> dict[str, Any]:
-    _ = fence_mod.gate_open
-    if not fence_mod.gate_open():
-        pass
-    _ = watermark.seal_target_allowed
     conn = connect(immediate=True)
     try:
         day = body.get("business_day") or settings_repo.get(conn, "business_day")
         if not day:
             raise HTTPException(400, "未指定营业日")
+        # 可封目标与流水写上界同源（watermark.clock_snapshot）：晚于钟面的日子
+        # 不是可封目标，封账台不得把水位凭空推到钟面之前。
+        if not watermark.seal_target_allowed(conn, settings_repo, day):
+            clock = watermark.dashboard_clock(conn, settings_repo)
+            raise HTTPException(
+                409,
+                f"营业日 {day} 晚于当前钟面 {clock}，不是可封目标；须先拨钟再封账",
+            )
+        # 已封判定与钉扎水位同读 close_batches（同一水位源），已封日不得当可封目标。
         if close_repo.is_sealed(conn, day):
             raise HTTPException(409, f"营业日 {day} 已封账")
         try:
